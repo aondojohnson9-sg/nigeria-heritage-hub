@@ -1,115 +1,81 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
   Fredoka_600SemiBold,
   Fredoka_700Bold,
 } from '@expo-google-fonts/fredoka';
 import { COLORS } from '../constants/theme';
-import LoadingScreen from '../components/LoadingScreen';
-import OnboardingScreen from './onboarding';
+import { ProgressProvider } from '../state/ProgressContext';
+import { AuthProvider } from '../state/AuthProvider';
+import { ToastProvider } from '../components/ui';
 
-// Prevent the native splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* ignore */
 });
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Fredoka_600SemiBold,
     Fredoka_700Bold,
   });
 
-  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
-  const [hasOnboarded, setHasOnboarded] = useState(false);
-
   useEffect(() => {
-    // Keep the loading screen visible for 9 seconds so users see the cheetah loading screen
-    const timer = setTimeout(() => {
-      setMinSplashElapsed(true);
-    }, 9000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const isReady = fontsLoaded && minSplashElapsed;
-
-  useEffect(() => {
-    if (isReady) {
+    if (fontsLoaded || fontError) {
       SplashScreen.hideAsync().catch(() => {
         /* ignore */
       });
     }
-  }, [isReady]);
+  }, [fontsLoaded, fontError]);
 
-  if (!isReady) {
-    return (
-      <SafeAreaProvider>
-        <LoadingScreen />
-      </SafeAreaProvider>
-    );
-  }
-
-  // Pop up the history journey onboarding screen immediately after loading!
-  if (!hasOnboarded) {
-    return (
-      <SafeAreaProvider>
-        <OnboardingScreen onContinue={() => setHasOnboarded(true)} />
-      </SafeAreaProvider>
-    );
+  if (!fontsLoaded && !fontError) {
+    return null;
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: COLORS.bg },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen
-          name="onboarding"
-          options={{
-            headerShown: false,
-            animation: 'fade',
-          }}
-        />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="loading"
-          options={{
-            headerShown: false,
-            animation: 'fade',
-          }}
-        />
-        <Stack.Screen
-          name="culture"
-          options={{
-            headerShown: false,
-            title: 'Culture',
-          }}
-        />
-        <Stack.Screen
-          name="states"
-          options={{
-            headerShown: false,
-            title: 'States & Territories',
-          }}
-        />
-        <Stack.Screen
-          name="auth"
-          options={{
-            headerShown: false,
-            presentation: 'modal',
-          }}
-        />
-      </Stack>
+      <ProgressProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <StatusBar style="light" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: COLORS.bg0 },
+                animation: 'slide_from_right',
+              }}
+            >
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="history" options={{ headerShown: false }} />
+              <Stack.Screen name="presidents" options={{ headerShown: false }} />
+              <Stack.Screen name="states" options={{ headerShown: false }} />
+              <Stack.Screen name="governors" options={{ headerShown: false }} />
+              <Stack.Screen name="constitution" options={{ headerShown: false }} />
+              <Stack.Screen name="today" options={{ headerShown: false }} />
+              <Stack.Screen name="culture" options={{ headerShown: false }} />
+              <Stack.Screen name="leaderboard" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="quiz/[id]"
+                options={{
+                  headerShown: false,
+                  presentation: 'fullScreenModal',
+                  animation: 'slide_from_bottom',
+                }}
+              />
+              <Stack.Screen
+                name="auth"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                }}
+              />
+            </Stack>
+          </ToastProvider>
+        </AuthProvider>
+      </ProgressProvider>
     </SafeAreaProvider>
   );
 }
