@@ -1,173 +1,175 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
-  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SHADOWS } from '../constants/theme';
+import { Redirect, router } from 'expo-router';
+import { COLORS, RADII } from '../constants/theme';
+import { useToast } from '../lib/hooks';
+import { useAuth } from '../state/auth';
+import Logo from '../components/Logo';
+import Mascot from '../components/Mascot';
+import { BackButton, Button } from '../components/ui';
 
 export default function AuthScreen() {
+  const toast = useToast();
+  const { user, login, register } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-  });
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = () => {
-    if (!form.email || !form.password || (mode === 'register' && !form.name)) {
-      Alert.alert('Required Fields', 'Please fill in all required fields.');
+  if (user) {
+    return <Redirect href="/profile" />;
+  }
+
+  async function submit() {
+    if (!form.email.trim() || !form.password || (mode === 'register' && !form.name.trim())) {
+      setError('Please fill in all required fields.');
       return;
     }
-
-    Alert.alert(
-      mode === 'login' ? 'Signed In!' : 'Account Created!',
-      `Welcome to Nigeria Heritage Hub${form.name ? ', ' + form.name : ''}!`,
-      [
-        {
-          text: 'Continue',
-          onPress: () => router.replace('/(tabs)'),
-        },
-      ]
-    );
-  };
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      if (mode === 'login') await login(form.email.trim(), form.password);
+      else await register(form.name.trim(), form.email.trim(), form.password);
+      toast({
+        emoji: mode === 'login' ? '👋' : '🎉',
+        text: mode === 'login' ? 'Welcome back!' : 'Account created!',
+      });
+      router.replace('/profile');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        style={styles.keyboardView}
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Close button at top right */}
-          <TouchableOpacity
-            style={styles.closeBtn}
-            onPress={() => router.back()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close" size={24} color={COLORS.text2} />
-          </TouchableOpacity>
-
-          <View style={styles.card}>
-            {/* Logo Row */}
-            <View style={styles.logoRow}>
-              <View style={styles.flagRow}>
-                <View style={[styles.flagStrip, { backgroundColor: COLORS.g700 }]} />
-                <View style={[styles.flagStrip, { backgroundColor: COLORS.white }]} />
-                <View style={[styles.flagStrip, { backgroundColor: COLORS.g700 }]} />
-              </View>
-              <Text style={styles.logoText}>Nigeria | Heritage Hub</Text>
-            </View>
-
-            {/* Tab Switcher */}
-            <View style={styles.tabBar}>
-              <TouchableOpacity
-                style={[styles.tab, mode === 'login' && styles.tabActive]}
-                onPress={() => setMode('login')}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    mode === 'login' && styles.tabTextActive,
-                  ]}
-                >
-                  Sign In
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.tab, mode === 'register' && styles.tabActive]}
-                onPress={() => setMode('register')}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    mode === 'register' && styles.tabTextActive,
-                  ]}
-                >
-                  Register
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Form Fields */}
-            <View style={styles.form}>
-              {mode === 'register' && (
-                <View style={styles.field}>
-                  <Text style={styles.label}>Full Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Chukwuemeka Obi"
-                    placeholderTextColor={COLORS.text3}
-                    value={form.name}
-                    onChangeText={(text) =>
-                      setForm((prev) => ({ ...prev, name: text }))
-                    }
-                    autoCapitalize="words"
-                  />
-                </View>
-              )}
-
-              <View style={styles.field}>
-                <Text style={styles.label}>Email Address</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="you@example.com"
-                  placeholderTextColor={COLORS.text3}
-                  value={form.email}
-                  onChangeText={(text) =>
-                    setForm((prev) => ({ ...prev, email: text }))
-                  }
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
-
-              <View style={styles.field}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="••••••••"
-                  placeholderTextColor={COLORS.text3}
-                  value={form.password}
-                  onChangeText={(text) =>
-                    setForm((prev) => ({ ...prev, password: text }))
-                  }
-                  secureTextEntry
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleSubmit}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.submitBtnText}>
-                  {mode === 'login' ? 'Sign In' : 'Create Account'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Back link */}
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => router.back()}
-            >
-              <Text style={styles.backBtnText}>← Back to Hub</Text>
-            </TouchableOpacity>
+          <View style={styles.top}>
+            <BackButton to="/profile" />
           </View>
+
+          <View style={styles.hero}>
+            <Mascot mood="wave" size={104} />
+            <Logo size={38} tagline />
+          </View>
+
+          <Text style={styles.pitch}>
+            Back up your progress, play on any device and join the national leaderboard.
+          </Text>
+
+          <View style={styles.seg}>
+            <Pressable
+              onPress={() => {
+                setMode('login');
+                setError('');
+              }}
+              style={[styles.segBtn, mode === 'login' && styles.segBtnOn]}
+            >
+              <Text style={[styles.segText, mode === 'login' && styles.segTextOn]}>
+                Sign In
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setMode('register');
+                setError('');
+              }}
+              style={[styles.segBtn, mode === 'register' && styles.segBtnOn]}
+            >
+              <Text style={[styles.segText, mode === 'register' && styles.segTextOn]}>
+                Register
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.form}>
+            {mode === 'register' && (
+              <View style={styles.field}>
+                <Text style={styles.label}>Display name</Text>
+                <TextInput
+                  value={form.name}
+                  onChangeText={(name) => setForm((f) => ({ ...f, name }))}
+                  placeholder="e.g. Chika"
+                  placeholderTextColor={COLORS.text3}
+                  maxLength={18}
+                  style={styles.input}
+                />
+              </View>
+            )}
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                value={form.email}
+                onChangeText={(email) => setForm((f) => ({ ...f, email }))}
+                placeholder="you@example.com"
+                placeholderTextColor={COLORS.text3}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                value={form.password}
+                onChangeText={(password) => setForm((f) => ({ ...f, password }))}
+                placeholder="At least 6 characters"
+                placeholderTextColor={COLORS.text3}
+                secureTextEntry
+                style={styles.input}
+              />
+            </View>
+
+            {error ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            <Button
+              variant="primary"
+              size="lg"
+              block
+              disabled={busy}
+              onPress={submit}
+            >
+              {busy
+                ? 'Please wait…'
+                : mode === 'login'
+                  ? 'Sign In'
+                  : 'Create Account'}
+            </Button>
+          </View>
+
+          <Text style={styles.note}>
+            Only your display name appears on the leaderboard — never your email.
+          </Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -175,122 +177,98 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: COLORS.bg0,
   },
-  keyboardView: {
-    flex: 1,
+  scroll: {
+    paddingTop: 14,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
   },
-  scrollContent: {
-    flexGrow: 1,
-    padding: 20,
-    justifyContent: 'center',
-  },
-  closeBtn: {
-    alignSelf: 'flex-end',
-    padding: 8,
-    marginBottom: 8,
-  },
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.md,
-  },
-  logoRow: {
+  top: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
+  },
+  hero: {
+    alignItems: 'center',
     gap: 10,
+    marginTop: 6,
+    marginBottom: 18,
   },
-  flagRow: {
+  pitch: {
+    textAlign: 'center',
+    color: COLORS.text2,
+    fontSize: 15,
+    marginBottom: 18,
+    paddingHorizontal: 8,
+    lineHeight: 21,
+  },
+  seg: {
     flexDirection: 'row',
-    width: 32,
-    height: 18,
-    borderRadius: 3,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#c6e8d4',
+    padding: 5,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    marginBottom: 18,
   },
-  flagStrip: {
+  segBtn: {
     flex: 1,
-  },
-  logoText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.g900,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#e6ece8',
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 20,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    borderRadius: 13,
     alignItems: 'center',
-    borderRadius: 11,
   },
-  tabActive: {
-    backgroundColor: COLORS.white,
-    ...SHADOWS.sm,
+  segBtnOn: {
+    backgroundColor: COLORS.green,
+    borderBottomWidth: 3,
+    borderBottomColor: COLORS.greenDeep,
   },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
+  segText: {
+    fontWeight: '900',
     color: COLORS.text2,
   },
-  tabTextActive: {
-    color: COLORS.g900,
-    fontWeight: '700',
+  segTextOn: {
+    color: COLORS.onBright,
   },
   form: {
-    gap: 16,
+    gap: 14,
   },
   field: {
     gap: 6,
   },
   label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.text1,
+    fontWeight: '900',
+    fontSize: 14,
+    color: COLORS.text2,
   },
   input: {
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
-    fontSize: 14,
-    color: COLORS.text1,
-  },
-  submitBtn: {
-    backgroundColor: COLORS.g700,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  submitBtnText: {
-    color: COLORS.white,
-    fontSize: 15,
+    height: 54,
+    paddingHorizontal: 16,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    color: COLORS.text,
     fontWeight: '700',
+    fontSize: 16,
   },
-  backBtn: {
-    alignItems: 'center',
-    marginTop: 20,
-    padding: 8,
+  errorBox: {
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,93,108,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,93,108,0.45)',
   },
-  backBtnText: {
-    color: COLORS.g600,
+  errorText: {
+    color: '#ffb3bb',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  note: {
+    textAlign: 'center',
+    color: COLORS.text3,
     fontSize: 13,
-    fontWeight: '600',
+    marginTop: 18,
   },
 });

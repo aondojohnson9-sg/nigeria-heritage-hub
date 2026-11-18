@@ -1,293 +1,586 @@
-import React, { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  Platform,
-} from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import TopBar from '../components/TopBar';
-import DrawerModal from '../components/DrawerModal';
-import { COLORS, SHADOWS } from '../constants/theme';
-import { STATES_DATA, ZONES, StateData } from '../constants/data';
+import { router, useLocalSearchParams } from 'expo-router';
+import { COLORS, FONTS, MODULE_COLORS, RADII, ZONE_COLORS } from '../constants/theme';
+import { STATES, ZONES, ZONE_EMOJI, type NigeriaState } from '../data/states';
+import { byId } from '../data/modules';
+import { useProgress } from '../state/progress';
+import { useToast } from '../lib/hooks';
+import { sfx } from '../lib/fx';
+import Icon from '../components/Icon';
+import Confetti from '../components/Confetti';
+import NigeriaMap, { type MapMark } from '../components/NigeriaMap';
+import PracticeCTA from '../components/Practice';
+import { Button, ModuleHero, Sheet } from '../components/ui';
+
+const mod = byId('states')!;
+
+function StateTile({
+  s,
+  seen,
+  onPress,
+}: {
+  s: NigeriaState;
+  seen: boolean;
+  onPress: (s: NigeriaState) => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        sfx.pop();
+        onPress(s);
+      }}
+      style={({ pressed }) => [styles.tile, pressed && { transform: [{ scale: 0.96 }] }]}
+    >
+      <Text style={styles.tileEmoji}>{ZONE_EMOJI[s.zone] || '🗺️'}</Text>
+      <Text style={styles.tileName}>{s.name}</Text>
+      <Text style={styles.tileCapital}>{s.capital}</Text>
+      {seen && (
+        <View style={styles.learnedDot}>
+          <Icon name="check" size={12} color={COLORS.onBright} />
+        </View>
+      )}
+    </Pressable>
+  );
+}
 
 export default function StatesScreen() {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedZone, setSelectedZone] = useState<string>('All');
-  const [search, setSearch] = useState('');
+  const { learned, markLearned, moduleProgress } = useProgress();
+  const toast = useToast();
+  const params = useLocalSearchParams<{ q?: string }>();
+  const initialQ = typeof params.q === 'string' ? params.q : '';
 
-  const filteredStates = useMemo(() => {
-    return STATES_DATA.filter((state: StateData) => {
-      const matchesZone = selectedZone === 'All' || state.zone === selectedZone;
-      const q = search.trim().toLowerCase();
-      const matchesSearch =
-        !q ||
-        state.name.toLowerCase().includes(q) ||
-        state.capital.toLowerCase().includes(q) ||
-        state.fact.toLowerCase().includes(q);
-      return matchesZone && matchesSearch;
-    });
-  }, [selectedZone, search]);
+  const [view, setView] = useState<'map' | 'cards'>('map');
+  const [zone, setZone] = useState<string>('All');
+  const [q, setQ] = useState(initialQ);
+  const [picked, setPicked] = useState<string | null>(
+    () => STATES.find((s) => s.name === initialQ)?.id || null
+  );
+  const [sheetState, setSheetState] = useState<NigeriaState | null>(null);
+  const [boom, setBoom] = useState(0);
+
+  const done = learned.states || [];
+  const list = useMemo(
+    () =>
+      STATES.filter(
+        (s) =>
+          (zone === 'All' || s.zone === zone) &&
+          `${s.name} ${s.capital}`.toLowerCase().includes(q.trim().toLowerCase())
+      ),
+    [zone, q]
+  );
+
+  const info = STATES.find((s) => s.id === picked);
+
+  const reward = (id: string) => {
+    if (markLearned('states', id)) {
+      sfx.xp();
+      setBoom((b) => b + 1);
+      toast({ emoji: '⚡', text: '+5 XP' });
+    }
+  };
+
+  const onPick = (id: string) => {
+    sfx.select();
+    setPicked(id);
+    reward(id);
+    const st = STATES.find((s) => s.id === id);
+    if (st) setSheetState(st);
+  };
+
+  const marks: Record<string, MapMark> = {};
+  for (const id of done) marks[id] = 'learned';
+  if (picked) marks[picked] = 'sel';
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <TopBar
-        showBack={true}
-        onOpenDrawer={() => setDrawerOpen(true)}
-        placeholder="Search states..."
-      />
-
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>States & Territories</Text>
-          <Text style={styles.subtitle}>
-            Explore the 36 states + FCT of the Federal Republic of Nigeria
-          </Text>
+        <ModuleHero mod={mod} progress={moduleProgress('states')} />
+
+        {/* Segmented control */}
+        <View style={styles.seg}>
+          <Pressable
+            onPress={() => {
+              sfx.tap();
+              setView('map');
+            }}
+            style={[styles.segBtn, view === 'map' && styles.segBtnOn]}
+          >
+            <Text style={[styles.segText, view === 'map' && styles.segTextOn]}>
+              🗺️ Map
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              sfx.tap();
+              setView('cards');
+            }}
+            style={[styles.segBtn, view === 'cards' && styles.segBtnOn]}
+          >
+            <Text style={[styles.segText, view === 'cards' && styles.segTextOn]}>
+              🃏 Grid
+            </Text>
+          </Pressable>
         </View>
 
-        {/* Search Bar */}
-        <View style={styles.searchBar}>
-          <Ionicons
-            name="search-outline"
-            size={18}
-            color={COLORS.text3}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Search by state or capital name..."
-            placeholderTextColor={COLORS.text3}
-            value={search}
-            onChangeText={setSearch}
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-          />
-          {search.length > 0 && Platform.OS !== 'ios' && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={16} color={COLORS.text3} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Zone Filter Chips */}
+        {/* Zone filter chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.zoneScroll}
-          contentContainerStyle={styles.zoneScrollContent}
+          contentContainerStyle={styles.chips}
+          style={{ marginHorizontal: -18 }}
         >
-          {ZONES.map((zone) => {
-            const isSelected = selectedZone === zone;
+          {ZONES.map((z) => {
+            const on = zone === z;
             return (
-              <TouchableOpacity
-                key={zone}
-                style={[
-                  styles.zoneChip,
-                  isSelected && styles.zoneChipSelected,
-                ]}
-                onPress={() => setSelectedZone(zone)}
-                activeOpacity={0.8}
+              <Pressable
+                key={z}
+                onPress={() => {
+                  sfx.tap();
+                  setZone(z);
+                }}
+                style={[styles.chipBtn, on && styles.chipBtnOn]}
               >
-                <Text
-                  style={[
-                    styles.zoneChipText,
-                    isSelected && styles.zoneChipTextSelected,
-                  ]}
-                >
-                  {zone}
-                </Text>
-              </TouchableOpacity>
+                <Text style={[styles.chipBtnText, on && styles.chipBtnTextOn]}>{z}</Text>
+              </Pressable>
             );
           })}
         </ScrollView>
 
-        {/* States Cards */}
-        <View style={styles.statesList}>
-          {filteredStates.map((state: StateData) => (
-            <View key={state.name} style={styles.stateCard}>
-              <View style={styles.stateHeaderRow}>
-                <Text style={styles.stateName}>{state.name}</Text>
-                <View style={styles.zoneBadge}>
-                  <Text style={styles.zoneBadgeText}>{state.zone}</Text>
+        {view === 'map' ? (
+          <>
+            <NigeriaMap
+              zones
+              activeZone={zone === 'All' ? null : zone}
+              marks={marks}
+              onPick={onPick}
+            />
+
+            {/* Zone color legend */}
+            <View style={styles.legend}>
+              {ZONES.filter((z) => z !== 'All').map((z) => {
+                const slug = z.toLowerCase().replace(/ /g, '-');
+                return (
+                  <View key={z} style={styles.legendItem}>
+                    <View
+                      style={[
+                        styles.legendDot,
+                        { backgroundColor: ZONE_COLORS[slug] || COLORS.green },
+                      ]}
+                    />
+                    <Text style={styles.legendText}>{z}</Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            <Text style={styles.hint}>
+              {done.length}/{STATES.length} explored · tap a state · use + to zoom into small ones
+            </Text>
+
+            {info ? (
+              <Pressable
+                onPress={() => setSheetState(info)}
+                style={styles.stateCard}
+              >
+                <View style={styles.stateCardHead}>
+                  <Text style={styles.stateCardTitle}>
+                    {info.name}
+                    {info.id === 'fct' ? '' : ' State'}
+                  </Text>
+                  <View style={styles.zoneChip}>
+                    <Text style={styles.zoneChipText}>{info.zone}</Text>
+                  </View>
                 </View>
+                <View style={styles.kv}>
+                  <Text style={styles.kvLabel}>CAPITAL</Text>
+                  <Text style={styles.kvVal}>{info.capital}</Text>
+                </View>
+                <View style={styles.kv}>
+                  <Text style={styles.kvLabel}>SLOGAN</Text>
+                  <Text style={styles.kvVal}>{info.slogan}</Text>
+                </View>
+                <View style={styles.kv}>
+                  <Text style={styles.kvLabel}>
+                    {info.id === 'fct' ? 'LED BY' : 'GOVERNOR'}
+                  </Text>
+                  <Text style={styles.kvVal}>
+                    {info.governor.replace('Minister: ', '')}
+                  </Text>
+                </View>
+              </Pressable>
+            ) : (
+              <View style={[styles.stateCard, styles.emptyCard]}>
+                <Text style={styles.emptyCardTitle}>Tap any state to meet it.</Text>
+                <Text style={styles.emptyCardSub}>
+                  You&apos;ll see its capital, slogan and governor.
+                </Text>
               </View>
+            )}
 
-              <View style={styles.capitalRow}>
-                <Ionicons name="location-sharp" size={14} color={COLORS.g600} />
-                <Text style={styles.capitalLabel}>Capital:</Text>
-                <Text style={styles.capitalValue}> {state.capital}</Text>
-              </View>
-
-              <Text style={styles.factText}>{state.fact}</Text>
+            <Button
+              variant="module"
+              moduleColor="states"
+              block
+              icon="pin"
+              onPress={() => router.push({ pathname: '/quiz/[id]', params: { id: 'map' } })}
+            >
+              Play Map Master
+            </Button>
+          </>
+        ) : (
+          <>
+            <View style={styles.searchBox}>
+              <Icon name="search" size={20} color={COLORS.text3} />
+              <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder="Search a state or capital"
+                placeholderTextColor={COLORS.text3}
+                style={styles.searchInput}
+                accessibilityLabel="Search states"
+              />
+              {q ? (
+                <Pressable
+                  onPress={() => setQ('')}
+                  accessibilityLabel="Clear"
+                  style={styles.searchClear}
+                >
+                  <Icon name="x" size={14} color={COLORS.text} />
+                </Pressable>
+              ) : null}
             </View>
-          ))}
-
-          {filteredStates.length === 0 && (
-            <View style={styles.noResultsBox}>
-              <Ionicons name="map-outline" size={40} color={COLORS.text3} />
-              <Text style={styles.noResultsText}>
-                No states found matching your filters.
-              </Text>
+            <Text style={styles.hint}>
+              Tap a state to view details · {done.length}/{STATES.length} explored
+            </Text>
+            <View style={styles.tiles}>
+              {list.map((s) => (
+                <StateTile
+                  key={s.id}
+                  s={s}
+                  seen={done.includes(s.id)}
+                  onPress={(st) => {
+                    reward(st.id);
+                    setPicked(st.id);
+                    setSheetState(st);
+                  }}
+                />
+              ))}
             </View>
-          )}
-        </View>
+            {list.length === 0 && (
+              <Text style={styles.empty}>No states match “{q}”.</Text>
+            )}
+          </>
+        )}
+
+        <PracticeCTA mod={mod} />
       </ScrollView>
 
-      <DrawerModal
-        visible={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        activeRoute="/states"
-      />
+      {/* State detail Sheet */}
+      <Sheet
+        open={!!sheetState}
+        onClose={() => setSheetState(null)}
+        title={
+          sheetState
+            ? `${sheetState.name}${sheetState.id === 'fct' ? '' : ' State'}`
+            : undefined
+        }
+      >
+        {sheetState && (
+          <View style={{ gap: 10 }}>
+            <View style={styles.zoneChip}>
+              <Text style={styles.zoneChipText}>
+                {ZONE_EMOJI[sheetState.zone]} {sheetState.zone}
+              </Text>
+            </View>
+            <View style={styles.kv}>
+              <Text style={styles.kvLabel}>CAPITAL</Text>
+              <Text style={styles.kvVal}>{sheetState.capital}</Text>
+            </View>
+            <View style={styles.kv}>
+              <Text style={styles.kvLabel}>SLOGAN</Text>
+              <Text style={styles.kvVal}>{sheetState.slogan}</Text>
+            </View>
+            <View style={styles.kv}>
+              <Text style={styles.kvLabel}>
+                {sheetState.id === 'fct' ? 'LED BY' : 'GOVERNOR'}
+              </Text>
+              <Text style={styles.kvVal}>
+                {sheetState.governor.replace('Minister: ', '')}
+              </Text>
+            </View>
+            {sheetState.note ? (
+              <Text style={styles.note}>{sheetState.note}</Text>
+            ) : null}
+            <Button
+              variant="module"
+              moduleColor="states"
+              block
+              onPress={() => setSheetState(null)}
+            >
+              Got it
+            </Button>
+          </View>
+        )}
+      </Sheet>
+
+      <Confetti fire={boom} power={0.4} origin={[0.5, 0.6]} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.bg0,
   },
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  contentContainer: {
-    padding: 16,
+  scroll: {
+    paddingTop: 14,
+    paddingHorizontal: 18,
     paddingBottom: 32,
   },
-  header: {
-    marginBottom: 16,
+  seg: {
+    flexDirection: 'row',
+    padding: 5,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    marginBottom: 14,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: COLORS.text1,
-    marginBottom: 6,
+  segBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 13,
+    alignItems: 'center',
   },
-  subtitle: {
-    fontSize: 14,
+  segBtnOn: {
+    backgroundColor: COLORS.green,
+    borderBottomWidth: 3,
+    borderBottomColor: COLORS.greenDeep,
+  },
+  segText: {
+    fontWeight: '900',
+    fontSize: 15,
     color: COLORS.text2,
-    lineHeight: 20,
   },
-  searchBar: {
+  segTextOn: {
+    color: COLORS.onBright,
+  },
+  chips: {
+    paddingHorizontal: 18,
+    gap: 8,
+    paddingBottom: 10,
+  },
+  chipBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: RADII.pill,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.line,
+  },
+  chipBtnOn: {
+    backgroundColor: MODULE_COLORS.states.m,
+    borderColor: MODULE_COLORS.states.m,
+  },
+  chipBtnText: {
+    fontWeight: '800',
+    fontSize: 13.5,
+    color: COLORS.text2,
+  },
+  chipBtnTextOn: {
+    color: '#07170d',
+  },
+  legend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+    justifyContent: 'center',
+  },
+  legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 14,
-    ...SHADOWS.sm,
+    gap: 5,
   },
-  searchIcon: {
-    marginRight: 8,
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.text1,
-  },
-  zoneScroll: {
-    marginBottom: 16,
-  },
-  zoneScrollContent: {
-    gap: 8,
-    paddingRight: 16,
-  },
-  zoneChip: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    ...SHADOWS.sm,
-  },
-  zoneChipSelected: {
-    backgroundColor: COLORS.g700,
-    borderColor: COLORS.g700,
-  },
-  zoneChipText: {
-    fontSize: 12,
-    fontWeight: '600',
+  legendText: {
     color: COLORS.text2,
-  },
-  zoneChipTextSelected: {
-    color: COLORS.white,
+    fontSize: 12,
     fontWeight: '700',
   },
-  statesList: {
-    gap: 12,
+  hint: {
+    color: COLORS.text2,
+    fontSize: 13.5,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 12,
   },
   stateCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.sm,
+    gap: 8,
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: 'rgba(37,217,126,0.55)',
+    borderBottomWidth: 5,
+    borderBottomColor: '#04140c',
   },
-  stateHeaderRow: {
+  emptyCard: {
+    borderStyle: 'dashed',
+    borderColor: COLORS.lineStrong,
+    alignItems: 'center',
+    paddingVertical: 18,
+  },
+  emptyCardTitle: {
+    color: COLORS.text,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  emptyCardSub: {
+    color: COLORS.text2,
+    fontSize: 13.5,
+  },
+  stateCardHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    gap: 8,
   },
-  stateName: {
-    fontSize: 17,
+  stateCardTitle: {
+    fontFamily: FONTS.displaySemi,
+    fontSize: 22,
+    color: COLORS.text,
+  },
+  zoneChip: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: RADII.pill,
+    backgroundColor: 'rgba(37,217,126,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(37,217,126,0.45)',
+  },
+  zoneChipText: {
+    color: '#9ff8c7',
+    fontSize: 12,
     fontWeight: '800',
-    color: COLORS.text1,
   },
-  zoneBadge: {
-    backgroundColor: COLORS.g100,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  zoneBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.g800,
-  },
-  capitalRow: {
+  kv: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 4,
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface2,
   },
-  capitalLabel: {
-    fontSize: 13,
+  kvLabel: {
+    color: COLORS.text2,
+    fontWeight: '800',
+    fontSize: 11.5,
+    letterSpacing: 0.5,
+  },
+  kvVal: {
+    color: COLORS.text,
+    fontWeight: '800',
+    fontSize: 15,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  note: {
+    color: COLORS.text2,
+    fontSize: 13.5,
+    lineHeight: 19,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    marginTop: 4,
+  },
+  searchInput: {
+    flex: 1,
+    color: COLORS.text,
     fontWeight: '700',
-    color: COLORS.text1,
+    fontSize: 15.5,
   },
-  capitalValue: {
-    fontSize: 13,
-    color: COLORS.text2,
-  },
-  factText: {
-    fontSize: 13,
-    color: COLORS.text2,
-    lineHeight: 18,
-  },
-  noResultsBox: {
-    paddingVertical: 36,
+  searchClear: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface3,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  noResultsText: {
-    marginTop: 8,
-    fontSize: 14,
+  tiles: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  tile: {
+    position: 'relative',
+    width: '48%',
+    flexGrow: 1,
+    minHeight: 124,
+    padding: 14,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    borderBottomWidth: 5,
+    borderBottomColor: '#020b06',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  tileEmoji: {
+    fontSize: 28,
+  },
+  tileName: {
+    fontFamily: FONTS.displaySemi,
+    fontSize: 18,
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  tileCapital: {
+    color: COLORS.green,
+    fontWeight: '800',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  learnedDot: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  empty: {
+    textAlign: 'center',
     color: COLORS.text2,
+    paddingVertical: 24,
   },
 });
